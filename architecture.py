@@ -91,7 +91,7 @@ def estimate_loss(model, eval_iters, fold_index, rest_index):
 def share_fitter(fold_index, rest_index, covar_size, learning_rate):
     pred = SharePredictor(covar_size).to(device)
     optimizer = torch.optim.AdamW(pred.parameters(), lr=learning_rate)
-    eval_interval = 400
+    eval_interval = LARGE_ITERS/10
     loss_list = []
 
     for it in tqdm(range(LARGE_ITERS)):
