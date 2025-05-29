@@ -1,1 +1,6 @@
 Run preprocess.py > architecture.py > main.py.
+
+Short description:
+I use presidential vote data from the MIT Election Data and Science Lab, which provides county-level vote counts from 2000 to 2020 along with a range of county-level covariates. To mimic real-time election night forecasting, I consider the problem of predicting 2020 vote shares using 2012 and 2016 vote shares, along with the first half of the 2020 vote shares. The benchmark for evaluation is the remaining half of the 2020 vote shares. The order in which 2020 counties are used follows the actual sequence in which states released their results on election night. I use shares from the first 25 states. Counties may not be interchangeable, but we assume that they are exchangeable conditionally on the observed covariates and further assume that county-level covariates are time-invariant. 
+
+I used a 2-layer neural network for the training model. The model maps a covariate vector to the vote share, a scalar. Hidden layers have parameters four times as many as the total number of covariates. The list of covariates used can be found below. I run each model 10,000 times for training. I used the 10-fold CV+ mode for conformal prediction.  $\alpha=0.1$, so the intervals target 90\% coverage on average and guarantee at least 80\% coverage.
