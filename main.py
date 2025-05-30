@@ -12,13 +12,22 @@ torch.manual_seed(305)
 from preprocess import responses_test, responses_train
 from preprocess import covariates_test, covariates_train
 
+# save state_year_labels for stratification later
+# state_cols = [col for col in covariates_train.columns if col.startswith('s_')]
+# year_cols = [col for col in covariates_train if col.startswith('year_')]
+
+# states = covariates_train[state_cols].idxmax(axis=1).str.replace('s_', '')
+# years = covariates_train[year_cols].idxmax(axis=1).str.replace('year_', '')
+
+# state_year_labels = states + "_" + years
+
+
+
 shares_test = torch.tensor(responses_test["share"], dtype=torch.float32).to(device)
 shares_train = torch.tensor(responses_train["share"], dtype=torch.float32).to(device)
 
 covariates_test = torch.tensor(covariates_test.to_numpy(dtype=float), dtype=torch.float32).to(device)
 covariates_train = torch.tensor(covariates_train.to_numpy(dtype=float), dtype=torch.float32).to(device)
-
-
 
 ### Import Neural Network Architecture
 from architecture import share_fitter
@@ -28,19 +37,22 @@ torch.manual_seed(300)
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 # Global hyperparameters
-SMALL_ITERS = 4000
-LARGE_ITERS = 10000
+SMALL_ITERS = 2000
+LARGE_ITERS = 5000
 EVAL_ITERS = 100
 covar_size = covariates_test.shape[1]
 
 
 
-### Implement CV
-from sklearn.model_selection import KFold
+### Implement stratified CV
+from sklearn.model_selection import Fold
+
+label_codes, _ = pd.factorize(state_year_labels)
+kf = Fold(n_splits=10, shuffle=True, random_state=200)
 
 learning_rate = 1e-4
-kf = KFold(n_splits=10, shuffle=True, random_state=300)
 
+pred_point = torch.tensor([0]).to(device)
 pred_upper = torch.empty(len(shares_test), 1).to(device)
 pred_lower = torch.empty(len(shares_test), 1).to(device)
 loss_list = []
@@ -48,21 +60,26 @@ loss_list = []
 for rest_index, fold_index in kf.split(shares_train):
     pred, losses = share_fitter(fold_index, rest_index, covar_size, learning_rate)
     loss_list.append([losses['train'].detach().item(), losses['val'].detach().item()])
+    if losses['train'].detach().item() > 0.1:
+        continue
 
     resid = torch.abs(pred(covariates_train[fold_index, ])[0].squeeze() - shares_train[fold_index])
     pred_test = pred(covariates_test)[0]
+    print(pred_test)
     
+    pred_point = torch.hstack([pred_point, pred_test.squeeze()])
     pred_upper = torch.hstack([pred_upper, pred_test + resid])
     pred_lower = torch.hstack([pred_lower, pred_test - resid])
     
+print(loss_list)
 
+pred_point = pred_point[1:]
 pred_upper = torch.quantile(pred_upper[:, 1:], 0.9, dim=1).squeeze()
 pred_lower = torch.quantile(pred_lower[:, 1:], 0.1, dim=1).squeeze()
 
-loss = torch.mean(torch.vstack([torch.tensor(loss) for loss in loss_list]), dim=0)
+loss = torch.mean(torch.vstack([torch.tensor(loss) for loss in loss_list if loss[0] < 0.1]), dim=0)
 print("train RMSE: ", round(math.sqrt(loss[0].item()), 4), 
       " test RMSE: ", round(math.sqrt(loss[1].item()), 4))
-
 
 
 
@@ -79,12 +96,15 @@ print("coverage rate: ", round(torch.mean(is_covered.to(dtype=torch.float64)).de
 # plot 
 shares_test = pd.Series(shares_test.detach().cpu().numpy())
 sorted_shares = shares_test.sort_values()
+pred_point = pred_point[shares_test.sort_values().index].detach().cpu().numpy()
 pred_upper = pred_upper[shares_test.sort_values().index].detach().cpu().numpy()
 pred_lower = pred_lower[shares_test.sort_values().index].detach().cpu().numpy()
 
 plt.figure(figsize=(10, 6))
 plt.scatter(x=list(range(len(sorted_shares))), y=sorted_shares,
-         color='#ff4444', s=1)
+         color='#ff4444', s=1),
+plt.scatter(x=list(range(len(sorted_shares))), y=pred_point,
+         color='#ffaaaa', s=1)
 plt.errorbar(x=list(range(len(sorted_shares))), 
              y=(pred_lower+pred_upper)/2,             
              yerr=(pred_upper-pred_lower)/2, 

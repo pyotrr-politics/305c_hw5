@@ -13,17 +13,19 @@ device = 'cuda' if torch.cuda.is_available() else 'cpu'
 ### Neural Network Architecture
 class FeedForward(nn.Module):
     """ 
-    neural network with two hidden layers
+    neural network with three hidden layers
     """
 
     def __init__(self, covar_size):
         super().__init__()
         self.net = nn.Sequential(
-            nn.Linear(covar_size, 4 * covar_size),
+            nn.Linear(covar_size, 6 * covar_size),
             nn.ReLU(),
-            nn.Linear(4 * covar_size, 4 * covar_size),
+            nn.Linear(6 * covar_size, 4 * covar_size),
             nn.ReLU(),
-            nn.Linear(4 * covar_size, covar_size),
+            nn.Linear(4 * covar_size, 2*covar_size),
+            nn.ReLU(),
+            nn.Linear(2 * covar_size, 1)
         )
 
     def forward(self, x):
@@ -38,7 +40,6 @@ class SharePredictor(nn.Module):
         """
         super().__init__()
         self.covar_transform = FeedForward(covar_size)
-        self.head = nn.Linear(covar_size, 1)
 
         # good initialization
         self.apply(self._init_weights)
@@ -55,7 +56,7 @@ class SharePredictor(nn.Module):
             covar_df: tensor of integers, shape (N, p)
             targets: tensor of integers, provides shares we are predicitng, shape (N)
         """
-        pred_shares = self.head(self.covar_transform(covar_df))
+        pred_shares = torch.sigmoid(self.covar_transform(covar_df))
         if targets is None:
             loss = None
         else:
