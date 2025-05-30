@@ -37,18 +37,18 @@ torch.manual_seed(300)
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 # Global hyperparameters
-SMALL_ITERS = 2000
-LARGE_ITERS = 5000
+SMALL_ITERS = 500
+LARGE_ITERS = 1000
 EVAL_ITERS = 100
 covar_size = covariates_test.shape[1]
 
 
 
 ### Implement stratified CV
-from sklearn.model_selection import Fold
+from sklearn.model_selection import KFold
 
-label_codes, _ = pd.factorize(state_year_labels)
-kf = Fold(n_splits=10, shuffle=True, random_state=200)
+# label_codes, _ = pd.factorize(state_year_labels)
+kf = KFold(n_splits=10, shuffle=True, random_state=200)
 
 learning_rate = 1e-4
 
@@ -65,7 +65,6 @@ for rest_index, fold_index in kf.split(shares_train):
 
     resid = torch.abs(pred(covariates_train[fold_index, ])[0].squeeze() - shares_train[fold_index])
     pred_test = pred(covariates_test)[0]
-    print(pred_test)
     
     pred_point = torch.hstack([pred_point, pred_test.squeeze()])
     pred_upper = torch.hstack([pred_upper, pred_test + resid])
