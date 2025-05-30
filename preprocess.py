@@ -1,9 +1,5 @@
 import pandas as pd
-
-torch.manual_seed(305)
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
-
-
+import numpy as np
 
 ### Import data
 votes = pd.read_csv("https://raw.githubusercontent.com/slinderman/stats305b/winter2025/assignments/hw2/votes.csv")
@@ -54,8 +50,7 @@ def preprocess_covariates(demo):
     X = pd.concat([X_scalar, X_cat, demo["fips"]], axis=1)
     return X
 
-covariates = preprocess_covariates(demo)
-
+covariates = preprocess_covariates(demo).drop(columns=["median_hh_inc"])
 
 def extract_responses(votes, year):
     """
@@ -73,6 +68,9 @@ def extract_responses(votes, year):
     # Extract the states and code them as integers
     state_names = sorted(dem_votes.state.unique())
     s = pd.Categorical(dem_votes.state, categories=state_names).codes
+    log_voter = np.log(dem_votes.totalvotes.values)
+    log_voter -= log_voter.mean(axis=0)
+    log_voter /= log_voter.std(axis=0)
 
     # Make a dataframe of responses
     responses = pd.DataFrame({
@@ -81,8 +79,8 @@ def extract_responses(votes, year):
         "s": s,
         "share": dem_votes.candidatevotes.values / \
             (dem_votes.candidatevotes.values + rep_votes.candidatevotes.values),
-        "year": dem_votes.year.values
-        # "N": dem_votes.totalvotes.values
+        "year": dem_votes.year.values,
+        "log_voters": log_voter
         })
     return responses, state_names
 
@@ -148,12 +146,5 @@ responses = pd.get_dummies(responses, columns=["year", "s"], drop_first=True)
 responses_test = responses[target_rows].reset_index(drop=True)
 responses_train = responses[~target_rows].reset_index(drop=True)
 
-target_rows = [covariates[covariates["fips"] == fips].index.item() \
-               for fips in responses_train["fips"]]
-covariates_train = pd.concat([covariates.loc[target_rows].reset_index(drop=True),
-                              responses_train.iloc[:, 3:]], axis=1)
-
-target_rows = [covariates[covariates["fips"] == fips].index.item() \
-               for fips in responses_test["fips"]]
-covariates_test = pd.concat([covariates.loc[target_rows].reset_index(drop=True),
-                              responses_test.iloc[:, 3:]], axis=1)
+covariates_train = responses_train.merge(covariates, on="fips", how="left").iloc[:, 3:]
+covariates_test = responses_test.merge(covariates, on="fips", how="left").iloc[:, 3:]
